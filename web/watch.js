@@ -26,16 +26,24 @@ $(document).ready(function() {
 		bootbox.alert('Invalid endpoint ID...');
 		return;
 	}
-	bootbox.prompt("Insert the endpoint token (leave it empty if not needed)", function(result) {
-		subscribeToEndpoint(result);
+	bootbox.prompt({
+		title: 'Insert the endpoint token (leave it empty if not needed)',
+		inputType: 'password',
+		callback: function(result) {
+			subscribeToEndpoint(result);
+		}
 	});
 });
 
 // Function to subscribe to the WHEP endpoint
 function subscribeToEndpoint(token) {
+	let headers = null;
+	if(token)
+		headers = { Authorization: 'Bearer ' + token };
 	$.ajax({
 		url: rest + '/endpoint/' + id,
 		type: 'POST',
+		headers: headers,
 		data: {}
 	}).error(function(xhr, textStatus, errorThrown) {
 		bootbox.alert(xhr.status + ": " + xhr.responseText);
@@ -80,6 +88,7 @@ function subscribeToEndpoint(token) {
 			$.ajax({
 				url: resource,
 				type: 'PATCH',
+				headers: headers,
 				contentType: 'application/trickle-ice-sdpfrag',
 				data: candidate
 			}).error(function(xhr, textStatus, errorThrown) {
@@ -116,6 +125,7 @@ function subscribeToEndpoint(token) {
 								$.ajax({
 									url: resource,
 									type: 'PATCH',
+									headers: headers,
 									contentType: 'application/sdp',
 									data: answer.sdp
 								}).error(function(xhr, textStatus, errorThrown) {
