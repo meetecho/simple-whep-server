@@ -280,6 +280,7 @@ function setupRest(app) {
 				subscriber.latestEtag = janus.generateRandomString(16);
 				// Done
 				res.setHeader('Access-Control-Expose-Headers', 'Location, Link');
+				res.setHeader('Accept-Patch', 'application/trickle-ice-sdpfrag');
 				res.setHeader('Location', subscriber.resource);
 				res.set('ETag', '"' + subscriber.latestEtag + '"');
 				let iceServers = endpoint.iceServers ? endpoint.iceServers : config.iceServers;
