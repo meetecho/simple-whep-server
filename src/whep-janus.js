@@ -156,7 +156,7 @@ var whepJanus = function(janusConfig) {
 					let found = false;
 					if(response.plugins) {
 						for(let plugin in response.plugins) {
-							if(plugin === "janus.plugin.videoroom") {
+							if(plugin === "janus.plugin.streaming") {
 								found = true;
 								break;
 							}
