@@ -1,10 +1,10 @@
 // Base path for the REST WHEP API
 var rest = '/whep';
-var resource = null;
+var resource = null, token = null;
 
 // PeerConnection
 var pc = null;
-var iceUfrag = null, icePwd = null;
+var iceUfrag = null, icePwd = null, candidates = [];
 
 // Helper function to get query string arguments
 function getQueryStringValue(name) {
@@ -15,6 +15,8 @@ function getQueryStringValue(name) {
 }
 // Get the endpoint ID to subscribe to
 var id = getQueryStringValue('id');
+// Check if we should let the endpoint send the offer
+var sendOffer = (getQueryStringValue('offer') === 'true')
 
 $(document).ready(function() {
 	// Make sure WebRTC is supported by the browser
@@ -30,88 +32,93 @@ $(document).ready(function() {
 		title: 'Insert the endpoint token (leave it empty if not needed)',
 		inputType: 'password',
 		callback: function(result) {
-			subscribeToEndpoint(result);
+			token = result;
+			subscribeToEndpoint();
 		}
 	});
 });
 
 // Function to subscribe to the WHEP endpoint
-function subscribeToEndpoint(token) {
-	let headers = null;
+async function subscribeToEndpoint() {
+	let headers = null, offer = null;
 	if(token)
 		headers = { Authorization: 'Bearer ' + token };
+	if(sendOffer) {
+		// We need to prepare an offer ourselves, do it now
+		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
+		createPeerConnectionIfNeeded(iceServers);
+		let transceiver = await pc.addTransceiver('audio');
+		if(transceiver.setDirection)
+			transceiver.setDirection('recvonly');
+		else
+			transceiver.direction = 'recvonly';
+		transceiver = await pc.addTransceiver('video');
+		if(transceiver.setDirection)
+			transceiver.setDirection('recvonly');
+		else
+			transceiver.direction = 'recvonly';
+		offer = await pc.createOffer({});
+		await pc.setLocalDescription(offer);
+		// Extract ICE ufrag and pwd (for trickle)
+		iceUfrag = offer.sdp.match(/a=ice-ufrag:(.*)\r\n/)[1];
+		icePwd = offer.sdp.match(/a=ice-pwd:(.*)\r\n/)[1];
+	}
+	// Contact the WHEP endpoint
 	$.ajax({
 		url: rest + '/endpoint/' + id,
 		type: 'POST',
 		headers: headers,
-		data: {}
+		contentType: offer ? 'application/sdp' : null,
+		data: offer ? offer.sdp : {}
 	}).error(function(xhr, textStatus, errorThrown) {
 		bootbox.alert(xhr.status + ": " + xhr.responseText);
 	}).success(function(sdp, textStatus, request) {
-		console.log('Got offer:', sdp);
+		console.log('Got SDP:', sdp);
 		resource = request.getResponseHeader('Location');
 		console.log('WHEP resource:', resource);
 		// TODO Parse ICE servers
 		// let ice = request.getResponseHeader('Link');
 		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
-		// Create PeerConnection
-		let pc_config = {
-			sdpSemantics: 'unified-plan',
-			iceServers: iceServers
+		// Create PeerConnection, if needed
+		createPeerConnectionIfNeeded(iceServers);
+		// Pass the SDP to the PeerConnection
+		let jsep = {
+			type: sendOffer ? 'answer' : 'offer',
+			sdp: sdp
 		};
-		pc = new RTCPeerConnection(pc_config);
-		pc.oniceconnectionstatechange = function() {
-			console.log('[ICE] ', pc.iceConnectionState);
-		};
-		pc.onicecandidate = function(event) {
-			let end = false;
-			if(!event.candidate || (event.candidate.candidate && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
-				console.log('End of candidates');
-				end = true;
-			} else {
-				console.log('Got candidate:', event.candidate.candidate);
-			}
-			if(!resource) {
-				console.warn('No resource URL, ignoring candidate');
-				return;
-			}
-			if(!iceUfrag || !icePwd) {
-				console.warn('No ICE credentials, ignoring candidate');
-				return;
-			}
-			// FIXME Trickle candidate
-			let candidate =
-				'a=ice-ufrag:' + iceUfrag + '\r\n' +
-				'a=ice-pwd:' + icePwd + '\r\n' +
-				'm=audio 9 RTP/AVP 0\r\n' +
-				'a=' + (end ? 'end-of-candidates' : event.candidate.candidate) + '\r\n';
-			$.ajax({
-				url: resource,
-				type: 'PATCH',
-				headers: headers,
-				contentType: 'application/trickle-ice-sdpfrag',
-				data: candidate
-			}).error(function(xhr, textStatus, errorThrown) {
-				bootbox.alert(xhr.status + ": " + xhr.responseText);
-			}).done(function(response) {
-				console.log('Candidate sent');
-			});
-		};
-		pc.ontrack = function(event) {
-			console.log('Handling Remote Track', event);
-			if(!event.streams)
-				return;
-			if($('#whepvideo').length === 0) {
-				$('#video').removeClass('hide').show();
-				$('#videoremote').append('<video class="rounded centered" id="whepvideo" width="100%" height="100%" autoplay playsinline/>');
-			}
-			attachMediaStream($('#whepvideo').get(0), event.streams[0]);
-		};
-		// Pass the offer to the PeerConnection
-		let jsep = { type: 'offer', sdp: sdp };
 		pc.setRemoteDescription(jsep)
 			.then(function() {
 				console.log('Remote description accepted');
+				if(sendOffer) {
+					// We're done: just check if we have candidates to send
+					if(candidates.length > 0) {
+						// FIXME Trickle candidate
+						let headers = null;
+						if(token)
+							headers = { Authorization: 'Bearer ' + token };
+						let candidate =
+							'a=ice-ufrag:' + iceUfrag + '\r\n' +
+							'a=ice-pwd:' + icePwd + '\r\n' +
+							'm=audio 9 RTP/AVP 0\r\n';
+						for(let c of candidates)
+							candidate += 'a=' + c + '\r\n';
+						candidates = [];
+						$.ajax({
+							url: resource,
+							type: 'PATCH',
+							headers: headers,
+							contentType: 'application/trickle-ice-sdpfrag',
+							data: candidate
+						}).error(function(xhr, textStatus, errorThrown) {
+							bootbox.alert(xhr.status + ": " + xhr.responseText);
+						}).done(function(response) {
+							console.log('Candidate sent');
+						});
+					}
+					return;
+				}
+				// If we got here, we're in the "WHIP server sends offer" mode,
+				// so we have to prepare an answer to send back via a PATCH
 				pc.createAnswer({})
 					.then(function(answer) {
 						console.log('Prepared answer:', answer.sdp);
@@ -157,3 +164,71 @@ function attachMediaStream(element, stream) {
 		}
 	}
 };
+
+// Helper function to create a PeerConnection, if needed, since we can either
+// expect an offer from the WHEP server, or provide one ourselves
+function createPeerConnectionIfNeeded(iceServers) {
+	if(pc)
+		return;
+	let pc_config = {
+		sdpSemantics: 'unified-plan',
+		iceServers: iceServers
+	};
+	pc = new RTCPeerConnection(pc_config);
+	pc.oniceconnectionstatechange = function() {
+		console.log('[ICE] ', pc.iceConnectionState);
+	};
+	pc.onicecandidate = function(event) {
+		let end = false;
+		if(!event.candidate || (event.candidate.candidate && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
+			console.log('End of candidates');
+			end = true;
+		} else {
+			console.log('Got candidate:', event.candidate.candidate);
+		}
+		if(!resource) {
+			console.log('No resource URL yet, queueing candidate');
+			candidates.push(end ? 'end-of-candidates' : event.candidate.candidate);
+			return;
+		}
+		if(!iceUfrag || !icePwd) {
+			console.log('No ICE credentials yet, queueing candidate');
+			candidates.push(end ? 'end-of-candidates' : event.candidate.candidate);
+			return;
+		}
+		// FIXME Trickle candidate
+		let headers = null;
+		if(token)
+			headers = { Authorization: 'Bearer ' + token };
+		let candidate =
+			'a=ice-ufrag:' + iceUfrag + '\r\n' +
+			'a=ice-pwd:' + icePwd + '\r\n' +
+			'm=audio 9 RTP/AVP 0\r\n' +
+			'a=' + (end ? 'end-of-candidates' : event.candidate.candidate) + '\r\n';
+		$.ajax({
+			url: resource,
+			type: 'PATCH',
+			headers: headers,
+			contentType: 'application/trickle-ice-sdpfrag',
+			data: candidate
+		}).error(function(xhr, textStatus, errorThrown) {
+			bootbox.alert(xhr.status + ": " + xhr.responseText);
+		}).done(function(response) {
+			console.log('Candidate sent');
+		});
+	};
+	pc.ontrack = function(event) {
+		console.log('Handling Remote Track', event);
+		if(!event.streams)
+			return;
+		console.warn(event.streams[0].getTracks());
+		if($('#whepvideo').length === 0) {
+			$('#video').removeClass('hide').show();
+			$('#videoremote').append('<video class="rounded centered" id="whepvideo" width="100%" height="100%" autoplay playsinline/>');
+			$('#whenvideo').get(0).volume = 0;
+		}
+		attachMediaStream($('#whepvideo').get(0), event.streams[0]);
+		$('#whepvideo').get(0).play();
+		$('#whepvideo').get(0).volume = 1;
+	};
+}

@@ -212,12 +212,16 @@ function setupRest(app) {
 			return;
 		}
 		whep.debug("/endpoint/:", id);
-		// If we received an SDP, the client is providing an offer
+		// If we received a payload, make sure it's an SDP
 		whep.debug(req.body);
-		if(req.headers["content-type"] === "application/sdp" && req.body.indexOf('v=0') >= 0) {
-			res.status(403);
-			res.send('Client offers unsupported');
-			return;
+		let offer = null;
+		if(req.headers["content-type"]) {
+			if(req.headers["content-type"] !== "application/sdp" || req.body.indexOf('v=0') < 0) {
+				res.status(406);
+				res.send('Unsupported content type');
+				return;
+			}
+			offer = req.body;
 		}
 		// Check the Bearer token
 		let auth = req.headers["authorization"];
@@ -264,11 +268,12 @@ function setupRest(app) {
 		let details = {
 			uuid: uuid,
 			mountpoint: endpoint.mountpoint,
-			pin: endpoint.pin
+			pin: endpoint.pin,
+			sdp: offer
 		};
 		subscriber.enabled = true;
 		janus.subscribe(details, function(err, result) {
-			// Make sure we got an OFFER back
+			// Make sure we got an SDP back
 			if(err) {
 				delete subscribers[uuid];
 				res.status(500);
