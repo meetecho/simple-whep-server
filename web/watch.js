@@ -225,7 +225,7 @@ function createPeerConnectionIfNeeded(iceServers) {
 		if($('#whepvideo').length === 0) {
 			$('#video').removeClass('hide').show();
 			$('#videoremote').append('<video class="rounded centered" id="whepvideo" width="100%" height="100%" autoplay playsinline/>');
-			$('#whenvideo').get(0).volume = 0;
+			$('#whepvideo').get(0).volume = 0;
 		}
 		attachMediaStream($('#whepvideo').get(0), event.streams[0]);
 		$('#whepvideo').get(0).play();
