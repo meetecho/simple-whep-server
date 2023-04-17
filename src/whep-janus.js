@@ -170,9 +170,22 @@ var whepJanus = function(janusConfig) {
 					that.config.janus.multistream = (response.version >= 1000);
 					whep.info("Janus instance version: " + response.version_string + " (" +
 						(that.config.janus.multistream ? "multistream" : "legacy") + ")");
-					// We're done
-					that.config.janus.state = "connected";
-					callback();
+					// Finally, create a manager handle we'll use for monitoring
+					let attach = {
+						janus: "attach",
+						session_id: that.config.janus.session.id,
+						plugin: "janus.plugin.streaming"
+					};
+					janusSend(attach, function(response) {
+						whep.debug("Attach response:", response);
+						// Unsubscribe from the transaction
+						delete that.config.janus.transactions[response["transaction"]];
+						// Take note of the handle ID
+						that.config.janus.manager = response["data"]["id"];
+						// We're done
+						that.config.janus.state = "connected";
+						callback();
+					});
 				});
 			});
 		});
@@ -193,6 +206,58 @@ var whepJanus = function(janusConfig) {
 		let uuid = details.uuid;
 		this.hangup({ uuid: uuid });
 		delete sessions[uuid];
+	};
+
+	// Public method to retrieve info on a specific mountpoint: we use this
+	// to let WHEP endpoints monitor when a mountpoint becomes active/inactive
+	this.isMountpointActive = function(details, callback) {
+		callback = (typeof callback === "function") ? callback : noop;
+		if(!details.mountpoint || !details.whepId) {
+			callback({ error: "Missing mandatory attribute(s)" });
+			return;
+		}
+		let mountpoint = details.mountpoint;
+		let whepId = details.whepId;
+		// Send a different request according to the medium we're setting up
+		let info = {
+			janus: "message",
+			session_id: that.config.janus.session.id,
+			handle_id: that.config.janus.manager,
+			body: {
+				request: "info",
+				id: mountpoint
+			}
+		};
+		janusSend(info, function(response) {
+			let event = response["janus"];
+			// Get the plugin data: is this a success or an error?
+			let data = response.plugindata.data;
+			if(data.error) {
+				// Unsubscribe from the call transaction
+				delete that.config.janus.transactions[response["transaction"]];
+				whep.err("Got an error querying mountpoint:", data.error);
+				callback({ error: data.error });
+				return;
+			}
+			let active = false;
+			let info = data.info;
+			if(that.config.janus.multistream) {
+				// Janus 1.x response, iterate on the media array
+				for(let m of info.media) {
+					if(m.age_ms && m.age_ms < 1000) {
+						active = true;
+						break;
+					}
+				}
+			} else {
+				// Janus 0.x response
+				if((info.audio_age_ms && info.audio_age_ms < 1000) ||
+						(info.video_age_ms && info.video_age_ms < 1000))
+					active = true;
+			}
+			// Done
+			callback(null, { whepId: whepId, active: active });
+		});
 	};
 
 	// Public method for subscribing to a Streaming plugin mountpoint
