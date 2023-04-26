@@ -205,6 +205,7 @@ var whepJanus = function(janusConfig) {
 		}
 		let mountpoint = details.mountpoint;
 		let pin = details.pin;
+		let sdp = details.sdp;
 		let uuid = details.uuid;
 		let session = sessions[uuid];
 		if(!session) {
@@ -263,6 +264,10 @@ var whepJanus = function(janusConfig) {
 					pin: pin
 				}
 			};
+			if(sdp) {
+				// We're going to let the user provide the SDP offer
+				subscribe.jsep = { type: 'offer', sdp: sdp };
+			}
 			janusSend(subscribe, function(response) {
 				let event = response["janus"];
 				if(event === "error") {
@@ -284,7 +289,7 @@ var whepJanus = function(janusConfig) {
 					callback({ error: data.error });
 					return;
 				}
-				whep.debug("Got an offer for session " + uuid + ":", data);
+				whep.debug("Got an SDP for session " + uuid + ":", data);
 				if(data["reason"]) {
 					// Unsubscribe from the transaction
 					delete that.config.janus.transactions[response["transaction"]];
