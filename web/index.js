@@ -115,7 +115,7 @@ function createEndpoint() {
 		'	<div class="form-group">' +
 		'		<label for="pin" class="col-sm-3 control-label">Mountpoint PIN</label>' +
 		'		<div class="col-sm-9">' +
-		'			<input type="text" class="form-control" id="pin" placeholder="Insert the Janus VideoRoom PIN (optional)" onkeypress="return checkEnter(this, event);"></input>' +
+		'			<input type="text" class="form-control" id="pin" placeholder="Insert the mountpoint PIN (optional)" onkeypress="return checkEnter(this, event);"></input>' +
 		'		</div>' +
 		'	</div>' +
 		'	<div class="form-group">' +
