@@ -22,7 +22,7 @@ import Janode from 'janode';
 import StreamingPlugin from 'janode/plugins/streaming';
 
 // Debugging
-var whep = {
+const whep = {
 	debug: debug('whep:debug'),
 	err: debug('whep:error'),
 	warn: debug('whep:warn'),
@@ -33,9 +33,9 @@ var whep = {
 import config from './config.js';
 
 // Static properties
-var janus = null;
-var endpoints = {};
-var subscribers = {};
+let janus = null;
+const endpoints = {};
+const subscribers = {};
 
 // Startup
 (async function main() {
@@ -89,13 +89,9 @@ async function connectToJanus() {
 	connection.once(Janode.EVENT.CONNECTION_ERROR, () => {
 		whep.warn('Lost connectivity to Janus, reset the manager and try reconnecting');
 		// Teardown existing endpoints
-		for(let id in endpoints) {
-			let endpoint = endpoints[id];
-			if(!endpoint)
-				continue;
-			for(let uuid in endpoint.subscribers) {
+		for(const [id, endpoint] of Object.entries(endpoints)) {
+			for(let uuid in endpoint.subscribers)
 				delete subscribers[uuid];
-			}
 			endpoint.subscribers = {};
 			whep.info('[' + id + '] Terminating WHEP session');
 		}
@@ -134,8 +130,7 @@ function setupRest(app) {
 		res.setHeader('content-type', 'application/json');
 		res.status(200);
 		let list = [];
-		for(let id in subscribers) {
-			let subscriber = subscribers[id];
+		for(const [id, subscriber] of Object.entries(subscribers)) {
 			let s = {
 				uuid: subscriber.uuid,
 				whepId: subscriber.whepId
