@@ -116,7 +116,7 @@ Both `JanusWhepServer` and `JanusWhepEndpoint` have a method called `listSubscri
 Both `JanusWhepServer` and `JanusWhepEndpoint` are also event emitters. At the time of writing, the supported events are:
 
 * `janus-disconnected`
-* `janus-resconnected`
+* `janus-reconnected`
 * `new-subscriber`
 * `subscriber-gone`
 
