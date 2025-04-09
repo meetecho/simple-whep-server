@@ -1,8 +1,8 @@
 {
 	"name": "janus-whep-server",
-	"description": "Simple Janus-based WHEP server",
-	"version": "0.0.2",
-	"license": "GPLv3",
+	"description": "Simple Janus-based WHEP server library",
+	"version": "1.0.0",
+	"type": "module",
 	"keywords": [
 		"whep",
 		"wish",
@@ -14,19 +14,36 @@
 		"name": "Lorenzo Miniero",
 		"email": "lorenzo@meetecho.com"
 	},
-	"main": "src/server.js",
-	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/meetecho/simple-whep-server.git"
+	},
+	"bugs": {
+		"url": "https://github.com/meetecho/simple-whep-server/issues"
+	},
+	"license": "ISC",
+	"main": "src/whep.js",
+	"exports": {
+		".": "./src/whep.js"
+	},
+	"files": [
+		"src/whep.js"
+	],
 	"dependencies": {
-		"colors": "^1.4.0",
 		"cors": "^2.8.5",
-		"debug": "^4.4.0",
 		"express": "^5.1.0",
 		"janode": "^1.7.4"
 	},
+	"devDependencies": {
+		"@eslint/js": "^9.4.0",
+		"eslint": "^9.4.0",
+		"globals": "^15.4.0"
+	},
+	"engines": {
+		"node": " >=18.18.0"
+	},
 	"scripts": {
-		"build": "npm install --production",
-		"start": "DEBUG=whep:*,-whep:debug JDEBUG=warn node src/server.js",
-		"start-verbose": "DEBUG=whep:*,-whep:debug JDEBUG=info node src/server.js",
-		"start-debug": "DEBUG=whep:* JDEBUG=debug node src/server.js"
+		"build": "npm install --omit=dev",
+		"lint": "npx eslint --debug"
 	}
 }

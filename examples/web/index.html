@@ -28,7 +28,7 @@
 	</div>
 	<div class="navbar-collapse collapse">
 		<ul class="nav navbar-nav">
-			<li class="active"><a href=".">Admin</a></li>
+			<li class="active"><a href=".">Watch</a></li>
 		</ul>
 		<div class="navbar-header navbar-right" style="margin-right: 0px;">
 			<ul class="nav navbar-nav">
@@ -42,34 +42,15 @@
 <div class="container">
 	<div class="row">
 		<div class="col-md-12">
-			<div class="page-header">
-				<h1>WHEP Endpoints</h1>
-			</div>
-			<div class="container">
-				<div class="row" id="list">
-					<div class="col-md-12">
-						<table class="table table-striped">
-							<tr>
-								<th width="16%">Endpoint ID</th>
-								<th width="12%">Mountpoint</th>
-								<th width="12%">Mountpoint PIN</th>
-								<th width="12%">Label</th>
-								<th width="12%">WHEP Token</th>
-								<th width="12%">Subscribers</th>
-								<th width="12%"></th>
-								<th width="12%"></th>
-							</tr>
-							<tr id="controls">
-								<td></td>
-								<td></td>
-								<td></td>
-								<td></td>
-								<td></td>
-								<td></td>
-								<td></td>
-								<td><i class="fa fa-plus-circle fa-fw" title="Create new endpoint" style="cursor: pointer;" id="create"></i></td>
-							</tr>
-						</table>
+			<div id="video" class="hide">
+				<div class="col-md-12">
+					<div class="panel panel-default">
+						<div class="panel-heading">
+							<h3 class="panel-title">
+								<span class="label label-info" id="wheplabel">WHEP Endpoint</span>
+							</h3>
+						</div>
+						<div class="panel-body" id="videoremote"></div>
 					</div>
 				</div>
 			</div>
