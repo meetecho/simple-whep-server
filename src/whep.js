@@ -31,12 +31,6 @@ function generateRandomString(len) {
 	return randomString;
 }
 
-// Entry point
-const create = (config = {}) => {
-	const server = new JanusWhepServer(config);
-	return server.start();
-};
-
 // WHEP server class
 class JanusWhepServer extends EventEmitter {
 
@@ -681,8 +675,7 @@ class JanusWhepLogger {
 }
 
 // Exports
-export default {
-	create,
+export {
 	JanusWhepServer,
 	JanusWhepEndpoint
 };

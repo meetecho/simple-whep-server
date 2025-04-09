@@ -16,7 +16,8 @@ The repo comes with a [few examples](https://github.com/meetecho/simple-whep-ser
 You create a new server this way:
 
 ```js
-const server = await JanusWhepServer.create(config);
+const server = new JanusWhepServer(config);
+await server.start();
 ```
 
 where `config` is an object that may contain the following properties:
@@ -47,7 +48,7 @@ where `config` is an object that may contain the following properties:
 The following snippet creates a WHEP server that will spawn its own REST backend on port `7090`:
 
 ```js
-const server = await JanusWhepServer.create({
+const server = new JanusWhepServer({
 	janus: {
 		address: 'ws://localhost:8188'
 	},
@@ -61,7 +62,7 @@ const server = await JanusWhepServer.create({
 The following snippet reuses an existing Express app contest for the WHEP server:
 
 ```js
-const server = await JanusWhepServer.create({
+const server = new JanusWhepServer({
 	janus: {
 		address: 'ws://localhost:8188'
 	},

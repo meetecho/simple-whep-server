@@ -1,6 +1,6 @@
 import express from 'express';
 import http from 'http';
-import JanusWhepServer from '../../../src/whep.js';
+import { JanusWhepServer } from '../../../src/whep.js';
 
 (async function main() {
 	console.log('Example: WHEP server creating a new REST backend');
@@ -22,7 +22,7 @@ import JanusWhepServer from '../../../src/whep.js';
 	http.createServer({}, myApp).listen(7190);
 
 	// Create a WHEP server, binding to port 7090 and using base path /whep
-	server = await JanusWhepServer.create({
+	server = new JanusWhepServer({
 		janus: {
 			address: 'ws://localhost:8188'
 		},
@@ -38,6 +38,8 @@ import JanusWhepServer from '../../../src/whep.js';
 	server.on('janus-reconnected', () => {
 		console.log('WHEP server reconnected to Janus');
 	});
+	// Start the server
+	await server.start();
 
 	// Create a test endpoint using a static token
 	let endpoint = server.createEndpoint({ id: 'abc123', mountpoint: 1, token: 'verysecret' });
