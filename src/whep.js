@@ -573,7 +573,7 @@ class JanusWhepServer extends EventEmitter {
 			this.subscribers.delete(uuid);
 			this.logger.info('[' + uuid + '] Terminating WHEP session');
 			endpoint.emit('subscriber-gone');
-			this.emit('subscriber-gone', id);
+			this.emit('subscriber-gone', endpoint.id);
 			// Done
 			res.sendStatus(200);
 		});
