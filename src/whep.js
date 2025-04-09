@@ -20,17 +20,6 @@ import Janode from 'janode';
 import StreamingPlugin from 'janode/plugins/streaming';
 import { EventEmitter } from 'events';
 
-// Utils
-const charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-function generateRandomString(len) {
-	let randomString = '';
-	for(let i=0; i<len; i++) {
-		let randomPoz = Math.floor(Math.random() * charSet.length);
-		randomString += charSet.substring(randomPoz,randomPoz+1);
-	}
-	return randomString;
-}
-
 // WHEP server class
 class JanusWhepServer extends EventEmitter {
 
@@ -48,6 +37,7 @@ class JanusWhepServer extends EventEmitter {
 			throw new Error('Invalid configuration, missing parameter "basePath" in "rest"');
 		if(!rest.port && !rest.app)
 			throw new Error('Invalid configuration, at least one of "port" and "app" should be set in "rest"');
+		const debugLevels = [ 'err', 'warn', 'info', 'verb', 'debug' ];
 		if(debug && debugLevels.indexOf(debug) === -1)
 			throw new Error('Invalid configuration, unsupported "debug" level');
 		this.config = {
@@ -68,7 +58,7 @@ class JanusWhepServer extends EventEmitter {
 		this.janus = null;
 		this.endpoints = new Map();
 		this.subscribers = new Map();
-		this.logger = new JanusWhepLogger({ prefix: '[WHEP] ', level: debug ? debug : 'info' });
+		this.logger = new JanusWhepLogger({ prefix: '[WHEP] ', level: debug ? debugLevels.indexOf(debug) : 2 });
 	}
 
 	async start() {
@@ -111,6 +101,16 @@ class JanusWhepServer extends EventEmitter {
 			await this.janus.close();
 		if(this.server)
 			this.server.close();
+	}
+
+	generateRandomString(len) {
+		const charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		let randomString = '';
+		for(let i=0; i<len; i++) {
+			let randomPoz = Math.floor(Math.random() * charSet.length);
+			randomString += charSet.substring(randomPoz,randomPoz+1);
+		}
+		return randomString;
 	}
 
 	createEndpoint({ id, mountpoint, pin, label, token, iceServers }) {
@@ -276,7 +276,7 @@ class JanusWhepServer extends EventEmitter {
 				res.send('Janus unavailable');
 				return;
 			}
-			let uuid = generateRandomString(16);
+			let uuid = this.generateRandomString(16);
 			let subscriber = {
 				uuid: uuid,
 				whepId: id
@@ -329,7 +329,7 @@ class JanusWhepServer extends EventEmitter {
 				subscriber.enabled = true;
 				endpoint.subscribers.set(uuid, true);
 				subscriber.resource = this.config.rest.basePath + '/resource/' + uuid;
-				subscriber.latestEtag = generateRandomString(16);
+				subscriber.latestEtag = this.generateRandomString(16);
 				if(offer) {
 					subscriber.sdpOffer = offer;
 					subscriber.ice = {
@@ -626,11 +626,10 @@ class JanusWhepEndpoint extends EventEmitter {
 }
 
 // Logger class
-const debugLevels = [ 'err', 'warn', 'info', 'verb', 'debug' ];
 class JanusWhepLogger {
 	constructor({ prefix, level }) {
 		this.prefix = prefix;
-		this.debugLevel = debugLevels.indexOf(level);
+		this.debugLevel = level;
 	}
 
 	err() {
