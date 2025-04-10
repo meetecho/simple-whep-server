@@ -1,10 +1,11 @@
 // Base path for the REST WHEP API
-var rest = '/whep';
-var resource = null, token = null;
+const backend = 'http://localhost:7090';
+const rest = '/whep';
+let resource = null, token = null;
 
 // PeerConnection
-var pc = null;
-var iceUfrag = null, icePwd = null, candidates = [];
+let pc = null;
+let iceUfrag = null, icePwd = null, candidates = [];
 
 // Helper function to get query string arguments
 function getQueryStringValue(name) {
@@ -14,9 +15,9 @@ function getQueryStringValue(name) {
 	return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
 }
 // Get the endpoint ID to subscribe to
-var id = getQueryStringValue('id');
+const id = getQueryStringValue('id');
 // Check if we should let the endpoint send the offer
-var sendOffer = (getQueryStringValue('offer') === 'true')
+const expectOffer = (getQueryStringValue('offer') === 'false')
 
 $(document).ready(function() {
 	// Make sure WebRTC is supported by the browser
@@ -43,7 +44,7 @@ async function subscribeToEndpoint() {
 	let headers = null, offer = null;
 	if(token)
 		headers = { Authorization: 'Bearer ' + token };
-	if(sendOffer) {
+	if(!expectOffer) {
 		// We need to prepare an offer ourselves, do it now
 		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
 		createPeerConnectionIfNeeded(iceServers);
@@ -65,7 +66,7 @@ async function subscribeToEndpoint() {
 	}
 	// Contact the WHEP endpoint
 	$.ajax({
-		url: rest + '/endpoint/' + id,
+		url: backend + rest + '/endpoint/' + id,
 		type: 'POST',
 		headers: headers,
 		contentType: offer ? 'application/sdp' : null,
@@ -83,13 +84,13 @@ async function subscribeToEndpoint() {
 		createPeerConnectionIfNeeded(iceServers);
 		// Pass the SDP to the PeerConnection
 		let jsep = {
-			type: sendOffer ? 'answer' : 'offer',
+			type: expectOffer ? 'offer' : 'answer',
 			sdp: sdp
 		};
 		pc.setRemoteDescription(jsep)
 			.then(function() {
 				console.log('Remote description accepted');
-				if(sendOffer) {
+				if(!expectOffer) {
 					// We're done: just check if we have candidates to send
 					if(candidates.length > 0) {
 						// FIXME Trickle candidate
@@ -104,7 +105,7 @@ async function subscribeToEndpoint() {
 							candidate += 'a=' + c + '\r\n';
 						candidates = [];
 						$.ajax({
-							url: resource,
+							url: backend + resource,
 							type: 'PATCH',
 							headers: headers,
 							contentType: 'application/trickle-ice-sdpfrag',
@@ -117,7 +118,7 @@ async function subscribeToEndpoint() {
 					}
 					return;
 				}
-				// If we got here, we're in the "WHIP server sends offer" mode,
+				// If we got here, we're in the "WHEP server sends offer" mode,
 				// so we have to prepare an answer to send back via a PATCH
 				pc.createAnswer({})
 					.then(function(answer) {
@@ -130,7 +131,7 @@ async function subscribeToEndpoint() {
 								console.log('Sending answer to WHEP server');
 								// Send the answer to the resource address
 								$.ajax({
-									url: resource,
+									url: backend + resource,
 									type: 'PATCH',
 									headers: headers,
 									contentType: 'application/sdp',
@@ -206,7 +207,7 @@ function createPeerConnectionIfNeeded(iceServers) {
 			'm=audio 9 RTP/AVP 0\r\n' +
 			'a=' + (end ? 'end-of-candidates' : event.candidate.candidate) + '\r\n';
 		$.ajax({
-			url: resource,
+			url: backend + resource,
 			type: 'PATCH',
 			headers: headers,
 			contentType: 'application/trickle-ice-sdpfrag',
