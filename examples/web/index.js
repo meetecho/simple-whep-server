@@ -77,9 +77,24 @@ async function subscribeToEndpoint() {
 		console.log('Got SDP:', sdp);
 		resource = request.getResponseHeader('Location');
 		console.log('WHEP resource:', resource);
-		// TODO Parse ICE servers
-		// let ice = request.getResponseHeader('Link');
-		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
+		// FIXME Parse Link headers (for ICE servers and/or SSE)
+		let iceServers = [];
+		let links = request.getResponseHeader('Link');
+		let l = links.split('<');
+		for(let i of l) {
+			if(!i || i.length === 0)
+				continue;
+			if(i.indexOf('ice-server') !== -1) {
+				// TODO Parse TURN attributes
+				let url = i.split('>')[0];
+				iceServers.push({ urls: url });
+			} else if(i.indexOf('urn:ietf:params:whep:ext:core:server-sent-events') !== -1) {
+				// TODO Parse event attribute
+				let url = i.split('>')[0];
+				let events = [ 'active', 'inactive', 'layers', 'viewercount' ];
+				startSSE(url, events);
+			}
+		}
 		// Create PeerConnection, if needed
 		createPeerConnectionIfNeeded(iceServers);
 		// Pass the SDP to the PeerConnection
@@ -222,7 +237,6 @@ function createPeerConnectionIfNeeded(iceServers) {
 		console.log('Handling Remote Track', event);
 		if(!event.streams)
 			return;
-		console.warn(event.streams[0].getTracks());
 		if($('#whepvideo').length === 0) {
 			$('#video').removeClass('hide').show();
 			$('#videoremote').append('<video class="rounded centered" id="whepvideo" width="100%" height="100%" autoplay playsinline/>');
@@ -232,4 +246,42 @@ function createPeerConnectionIfNeeded(iceServers) {
 		$('#whepvideo').get(0).play();
 		$('#whepvideo').get(0).volume = 1;
 	};
+}
+
+// Helper function to subscribe to events via SSE
+function startSSE(url, events) {
+	console.log('Starting SSE:', url);
+	$.ajax({
+		url: backend + url,
+		type: 'POST',
+		contentType: 'application/json',
+		data: JSON.stringify(events)
+	}).error(function(xhr, textStatus, errorThrown) {
+		bootbox.alert(xhr.status + ": " + xhr.responseText);
+	}).success(function(res, textStatus, request) {
+		// Done, access the Location header
+		let sse = request.getResponseHeader('Location');
+		console.log('SSE Location:', sse);
+		let source = new EventSource(sse);
+		source.addEventListener('active', message => {
+			updateSSE('active', message.data);
+		});
+		source.addEventListener('inactive', message => {
+			updateSSE('inactive', message.data);
+		});
+		source.addEventListener('viewercount', message => {
+			updateSSE('viewercount', message.data);
+		});
+		source.addEventListener('layer', message => {
+			updateSSE('layer', message.data);
+		});
+	});
+}
+
+function updateSSE(event, data) {
+	console.log('SSE: ' + event + ' = ' + data);
+	if($('#sse-' + event).length === 0)
+		$('.panel-title').append('<span id="sse-' + event + '" class="label label-default pull-right"></span>');
+	$('#sse-' + event).text(event + ': ' + data);
+
 }

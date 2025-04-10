@@ -43,10 +43,20 @@ import { JanusWhepServer } from '../../../src/whep.js';
 
 	// Create a test endpoint using a static token
 	let endpoint = server.createEndpoint({ id: 'abc123', mountpoint: 1, token: 'verysecret' });
-	endpoint.on('new-subscriber', function() {
-		console.log(this.id + ': Endpoint has a new subscriber');
+	endpoint.on('new-subscriber', function(uuid) {
+		console.log(this.id + ': Endpoint has a new subscriber (' + uuid + ')');
+		endpoint.notifySubscribers({ event: 'viewercount', data: ''+endpoint.countSubscribers() });
 	});
-	endpoint.on('subscriber-gone', function() {
-		console.log(this.id + ': Endpoint subscriber left');
+	endpoint.on('subscriber-sse', function(uuid, events) {
+		if(events) {
+			console.log(this.id + ': Subscriber ' + uuid + ' subscribed to SSE:', events);
+			this.getSubscriber({ uuid: uuid }).notify({ event: 'viewercount', data: ''+endpoint.countSubscribers() });
+		} else {
+			console.log(this.id + ': Subscriber ' + uuid + ' unsubscribed from SSE');
+		}
+	});
+	endpoint.on('subscriber-gone', function(uuid) {
+		console.log(this.id + ': Endpoint subscriber left (' + uuid + ')');
+		endpoint.notifySubscribers({ event: 'viewercount', data: ''+endpoint.countSubscribers() });
 	});
 }());
