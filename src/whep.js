@@ -16,8 +16,11 @@ import cors from 'cors';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
+
 import Janode from 'janode';
 import StreamingPlugin from 'janode/plugins/streaming';
+import VideoRoomPlugin from 'janode/plugins/videoroom';
+import RecordPlayPlugin from 'janode/plugins/recordplay';
 import { EventEmitter } from 'events';
 
 // WHEP server class
@@ -113,14 +116,22 @@ class JanusWhepServer extends EventEmitter {
 		return randomString;
 	}
 
-	createEndpoint({ id, mountpoint, pin, label, token, iceServers }) {
-		if(!id || !mountpoint)
+	createEndpoint({ id, plugin, mountpoint, room, feed, pin, label, token, iceServers }) {
+		if(!plugin)
+			plugin = 'streaming';
+		if(!id || (plugin === 'streaming' && !mountpoint) ||
+				(plugin === 'videoroom' && (!room || !feed)) || (plugin === 'recordplay' && !feed))
 			throw new Error('Invalid arguments');
+		if(plugin && plugin !== 'streaming' && plugin !== 'videoroom' && plugin !== 'recordplay')
+			throw new Error('Unsupported plugin');
 		if(this.endpoints.has(id))
 			throw new Error('Endpoint already exists');
 		let endpoint = new JanusWhepEndpoint({
 			id: id,
+			plugin: plugin,
 			mountpoint: mountpoint,
+			room: room,
+			feed: feed,
 			pin: pin,
 			label: label,
 			token: token,
@@ -249,6 +260,11 @@ class JanusWhepServer extends EventEmitter {
 				}
 				offer = req.body;
 			}
+			if(offer && endpoint.plugin !== 'streaming') {
+				res.status(406);
+				res.send('Client offers unsupported by this endpoint');
+				return;
+			}
 			// Check the Bearer token
 			let auth = req.headers['authorization'];
 			if(endpoint.token) {
@@ -286,8 +302,21 @@ class JanusWhepServer extends EventEmitter {
 			this.logger.info('[' + id + '] Subscribing to WHEP endpoint');
 			subscriber.enabling = true;
 			try {
-				// Connect to the Streaming plugin
-				subscriber.handle = await this.janus.attach(StreamingPlugin);
+				// Connect to the specified plugin
+				let details = {};
+				if(endpoint.plugin === 'streaming') {
+					subscriber.handle = await this.janus.attach(StreamingPlugin);
+					details.id = endpoint.mountpoint;
+					details.pin = endpoint.pin;
+				} else if(endpoint.plugin === 'videoroom') {
+					subscriber.handle = await this.janus.attach(VideoRoomPlugin);
+					details.room = endpoint.room;
+					details.feed = endpoint.feed;
+					details.pin = endpoint.pin;
+				} else if(endpoint.plugin === 'recordplay') {
+					subscriber.handle = await this.janus.attach(RecordPlayPlugin);
+					details.id = endpoint.feed;
+				}
 				subscriber.handle.on(Janode.EVENT.HANDLE_DETACHED, () => {
 					// Janus notified us the session is gone, tear it down
 					let subscriber = this.subscribers.get(uuid);
@@ -313,10 +342,6 @@ class JanusWhepServer extends EventEmitter {
 						this.subscribers.delete(uuid);
 					}
 				});
-				let details = {
-					id: endpoint.mountpoint,
-					pin: endpoint.pin
-				};
 				if(offer) {
 					// Client offer (we still support both modes)
 					details.jsep = {
@@ -324,7 +349,13 @@ class JanusWhepServer extends EventEmitter {
 						sdp: offer
 					};
 				}
-				const result = await subscriber.handle.watch(details);
+				let result = null;
+				if(endpoint.plugin === 'streaming')
+					result = await subscriber.handle.watch(details);
+				else if(endpoint.plugin === 'videoroom')
+					result = await subscriber.handle.joinSubscriber(details);
+				else if(endpoint.plugin === 'recordplay')
+					result = await subscriber.handle.play(details);
 				subscriber.enabling = false;
 				subscriber.enabled = true;
 				endpoint.subscribers.set(uuid, true);
@@ -599,10 +630,13 @@ class JanusWhepServer extends EventEmitter {
 
 // WHEP endpoint class
 class JanusWhepEndpoint extends EventEmitter {
-	constructor({ id, mountpoint, pin, label, token, iceServers }) {
+	constructor({ id, plugin, mountpoint, room, feed, pin, label, token, iceServers }) {
 		super();
 		this.id = id;
+		this.plugin = plugin;
 		this.mountpoint = mountpoint;
+		this.room = room;
+		this.feed = feed;
 		this.pin = pin;
 		this.label = label;
 		this.token = token;
