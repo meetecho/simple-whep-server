@@ -84,10 +84,11 @@ The object to pass when creating a new endpoint must refer to the following stru
 ```
 {
 	id: "<unique ID of the endpoint to create>",
-	mountpoint: <Streaming mountpoint ID to subscribe to>,
-	pin: <Streaming mountpoint pin, if required to subscribe (optional)>,
-	label: <Label to show when subscribing (optional, only relevant in the demo)>,
-	token: "<token to require via Bearer authorization when using WHIP: can be either a string, or a callback function to validate the provided token (optional)>,
+	plugin: "<ID of the Janus plugin to subscribe to (optional, default=streaming; supported=videoroom,recordplay)>",
+	mountpoint: <Plugin resource to subscribe to (e.g., Streaming mountpoint ID)>,
+	pin: <Resource pin, if required to subscribe (optional)>,
+	label: "<Label to show when subscribing (optional, only relevant in the demo)>",
+	token: "<token to require via Bearer authorization when using WHIP: can be either a string, or a callback function to validate the provided token (optional)>",
 	iceServers: [ array of STUN/TURN servers to return via Link headers (optional, overrides global ones) ]
 }
 ```
