@@ -3,7 +3,7 @@ Simple WHEP Server
 
 This is a Node.js library implementation of a [WHEP server](https://datatracker.ietf.org/doc/draft-ietf-wish-whep/), developed by [Meetecho](https://www.meetecho.com), using the [Janus WebRTC Server](https://github.com/meetecho/janus-gateway/) as a WebRTC server backend and [Janode](https://github.com/meetecho/janode/) as its Janus stack. While it was initially conceived to be used mostly for testing with [Simple WHEP Client](https://github.com/meetecho/simple-whep-client) (based on [GStreamer's webrtcbin](https://gstreamer.freedesktop.org/documentation/webrtc/index.html)), as a standard WHEP implementation it's supposed to interoperate just as well with other WHEP implementations.
 
-The library is available on [npm](https://npm.io/package/janus-whep-server) and the source code is on [Github](https://github.com/meetecho/simple-whep-server/).
+The library is available on [npm](https://www.npmjs.com/package/janus-whep-server) and the source code is on [Github](https://github.com/meetecho/simple-whep-server/).
 
 > Note: this is an implementation of WHEP (WebRTC-HTTP egress protocol), **NOT** WHIP (WebRTC-HTTP ingestion protocol). If you're looking for a WHIP server to handle media ingestion, check the [Simple WHIP Server](https://github.com/meetecho/simple-whip-server) library instead. The two libraries can be used together in the same application, if you want to serve both protocols at the same time.
 
