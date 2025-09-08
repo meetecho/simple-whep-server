@@ -59,6 +59,7 @@ class JanusWhepServer extends EventEmitter {
 
 		// Resources
 		this.janus = null;
+		this.multistream = false;
 		this.endpoints = new Map();
 		this.subscribers = new Map();
 		this.logger = new JanusWhepLogger({ prefix: '[WHEP] ', level: debug ? debugLevels.indexOf(debug) : 2 });
@@ -216,10 +217,13 @@ class JanusWhepServer extends EventEmitter {
 			this.emit('janus-disconnected');
 			// Reconnect
 			this.janus = null;
+			this.multistream = false;
 			setTimeout(this._connectToJanus.bind(this), 1);
 		});
 		this.janus = await connection.create();
-		this.logger.info('Connected to Janus:', this.config.janus.address);
+		const info = await connection.getInfo();
+		this.logger.info('Connected to Janus v' + info.version_string + ':', this.config.janus.address);
+		this.multistream = info.version >= 1000;
 		if(this.started)
 			this.emit('janus-reconnected');
 	}
@@ -249,22 +253,19 @@ class JanusWhepServer extends EventEmitter {
 				return;
 			}
 			this.logger.verb('/endpoint/:', id);
-			// If we received a payload, make sure it's an SDP
-			this.logger.debug(req.body);
-			let offer = null;
-			if(req.headers['content-type']) {
-				if(req.headers['content-type'] !== 'application/sdp' || req.body.indexOf('v=0') < 0) {
-					res.status(406);
-					res.send('Unsupported content type');
-					return;
-				}
-				offer = req.body;
-			}
-			if(offer && endpoint.plugin !== 'streaming') {
-				res.status(406);
-				res.send('Client offers unsupported by this endpoint');
+			// Make sure we received an SDP
+			if(!req.body || req.body.indexOf('v=0') < 0) {
+				res.status(415);
+				res.send('Missing SDP offer');
 				return;
 			}
+			this.logger.debug(req.body);
+			if(req.headers['content-type'] !== 'application/sdp') {
+				res.status(415);
+				res.send('Unsupported content type');
+				return;
+			}
+			let offer = req.body;
 			// Check the Bearer token
 			let auth = req.headers['authorization'];
 			if(endpoint.token) {
@@ -306,15 +307,21 @@ class JanusWhepServer extends EventEmitter {
 				let details = {};
 				if(endpoint.plugin === 'streaming') {
 					subscriber.handle = await this.janus.attach(StreamingPlugin);
+					// If we're connected to Janus 0.x, use server sent offers
+					subscriber.serverSentOffer = !this.multistream;
 					details.id = endpoint.mountpoint;
 					details.pin = endpoint.pin;
 				} else if(endpoint.plugin === 'videoroom') {
 					subscriber.handle = await this.janus.attach(VideoRoomPlugin);
+					// The VideoRoom plugin only supports server sent offers for subscriptions
+					subscriber.serverSentOffer = true;
 					details.room = endpoint.room;
 					details.feed = endpoint.feed;
 					details.pin = endpoint.pin;
 				} else if(endpoint.plugin === 'recordplay') {
 					subscriber.handle = await this.janus.attach(RecordPlayPlugin);
+					// The Record&Play plugin only supports server sent offers for subscriptions
+					subscriber.serverSentOffer = true;
 					details.id = endpoint.feed;
 				}
 				subscriber.handle.on(Janode.EVENT.HANDLE_DETACHED, () => {
@@ -342,8 +349,8 @@ class JanusWhepServer extends EventEmitter {
 						this.subscribers.delete(uuid);
 					}
 				});
-				if(offer) {
-					// Client offer (we still support both modes)
+				if(offer && !subscriber.serverSentOffer) {
+					// Client-side offer
 					details.jsep = {
 						type: 'offer',
 						sdp: offer
@@ -361,7 +368,7 @@ class JanusWhepServer extends EventEmitter {
 				endpoint.subscribers.set(uuid, true);
 				subscriber.resource = this.config.rest.basePath + '/resource/' + uuid;
 				subscriber.latestEtag = this.generateRandomString(16);
-				if(offer) {
+				if(offer && !subscriber.serverSentOffer) {
 					subscriber.sdpOffer = offer;
 					subscriber.ice = {
 						ufrag: subscriber.sdpOffer.match(/a=ice-ufrag:(.*)\r\n/)[1],
@@ -393,7 +400,8 @@ class JanusWhepServer extends EventEmitter {
 					}
 					res.setHeader('Link', links);
 				}
-				res.writeHeader(201, { 'Content-Type': 'application/sdp' });
+				// Reply with a 201 for client-side offers, and a 406 for server-sent-offers
+				res.writeHeader(subscriber.serverSentOffer ? 406 : 201, { 'Content-Type': 'application/sdp' });
 				res.write(result.jsep.sdp);
 				res.end();
 				endpoint.emit('new-subscriber');
@@ -417,7 +425,7 @@ class JanusWhepServer extends EventEmitter {
 			res.sendStatus(405);
 		});
 
-		// Patch can be used both for the SDP answer and to trickle a WHEP resource
+		// Patch can be used both for the SDP answer (for server-sent-offers) and to trickle a WHEP resource
 		router.patch('/resource/:uuid', async (req, res) => {
 			let uuid = req.params.uuid;
 			let subscriber = this.subscribers.get(uuid);
@@ -441,6 +449,13 @@ class JanusWhepServer extends EventEmitter {
 			}
 			if(req.headers['content-type'] === 'application/sdp') {
 				// We received an SDP answer from the client
+				if(!subscriber.serverSentOffer) {
+					// This is not a server-sent offer subscription, reject this
+					res.status(422);
+					res.send('Janus unavailable');
+					return;
+
+				}
 				this.logger.verb('/resource[answer]/:', uuid);
 				this.logger.debug(req.body);
 				// Prepare the JSEP object

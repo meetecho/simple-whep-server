@@ -16,8 +16,6 @@ function getQueryStringValue(name) {
 }
 // Get the endpoint ID to subscribe to
 const id = getQueryStringValue('id');
-// Check if we should let the endpoint send the offer
-const expectOffer = (getQueryStringValue('offer') === 'false')
 
 $(document).ready(function() {
 	// Make sure WebRTC is supported by the browser
@@ -41,29 +39,28 @@ $(document).ready(function() {
 
 // Function to subscribe to the WHEP endpoint
 async function subscribeToEndpoint() {
-	let headers = null, offer = null;
+	let headers = null;
 	if(token)
 		headers = { Authorization: 'Bearer ' + token };
-	if(!expectOffer) {
-		// We need to prepare an offer ourselves, do it now
-		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
-		createPeerConnectionIfNeeded(iceServers);
-		let transceiver = await pc.addTransceiver('audio');
-		if(transceiver.setDirection)
-			transceiver.setDirection('recvonly');
-		else
-			transceiver.direction = 'recvonly';
-		transceiver = await pc.addTransceiver('video');
-		if(transceiver.setDirection)
-			transceiver.setDirection('recvonly');
-		else
-			transceiver.direction = 'recvonly';
-		offer = await pc.createOffer({});
-		await pc.setLocalDescription(offer);
-		// Extract ICE ufrag and pwd (for trickle)
-		iceUfrag = offer.sdp.match(/a=ice-ufrag:(.*)\r\n/)[1];
-		icePwd = offer.sdp.match(/a=ice-pwd:(.*)\r\n/)[1];
-	}
+	// Prepare an offer: in case the server only supports server-sent
+	// offers by replying with a 406, we'll switch stance on the fly
+	let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
+	createPeerConnectionIfNeeded(iceServers);
+	let transceiver = await pc.addTransceiver('audio');
+	if(transceiver.setDirection)
+		transceiver.setDirection('recvonly');
+	else
+		transceiver.direction = 'recvonly';
+	transceiver = await pc.addTransceiver('video');
+	if(transceiver.setDirection)
+		transceiver.setDirection('recvonly');
+	else
+		transceiver.direction = 'recvonly';
+	let offer = await pc.createOffer({});
+	await pc.setLocalDescription(offer);
+	// Extract ICE ufrag and pwd (for trickle)
+	iceUfrag = offer.sdp.match(/a=ice-ufrag:(.*)\r\n/)[1];
+	icePwd = offer.sdp.match(/a=ice-pwd:(.*)\r\n/)[1];
 	// Contact the WHEP endpoint
 	$.ajax({
 		url: backend + rest + '/endpoint/' + id,
@@ -72,85 +69,104 @@ async function subscribeToEndpoint() {
 		contentType: offer ? 'application/sdp' : null,
 		data: offer ? offer.sdp : {}
 	}).error(function(xhr, textStatus, errorThrown) {
+		// Check if this is a switch to a server-sent offer
+		if(xhr.status === 406 && xhr.getResponseHeader('Content-Type') &&
+				xhr.responseText && xhr.responseText.indexOf('v=0') === 0) {
+			// It is, close the previous PeerConnection handle the offer
+			try { pc.close(); } catch(e) {};
+			pc = null;
+			handleWhepResponse(xhr, xhr.responseText, true)
+			return;
+		}
+		// If we got here, it's a failure
 		bootbox.alert(xhr.status + ": " + xhr.responseText);
 	}).success(function(sdp, textStatus, request) {
-		console.log('Got SDP:', sdp);
-		resource = request.getResponseHeader('Location');
-		console.log('WHEP resource:', resource);
-		// TODO Parse ICE servers
-		// let ice = request.getResponseHeader('Link');
-		let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
-		// Create PeerConnection, if needed
-		createPeerConnectionIfNeeded(iceServers);
-		// Pass the SDP to the PeerConnection
-		let jsep = {
-			type: expectOffer ? 'offer' : 'answer',
-			sdp: sdp
-		};
-		pc.setRemoteDescription(jsep)
-			.then(function() {
-				console.log('Remote description accepted');
-				if(!expectOffer) {
-					// We're done: just check if we have candidates to send
-					if(candidates.length > 0) {
-						// FIXME Trickle candidate
-						let headers = null;
-						if(token)
-							headers = { Authorization: 'Bearer ' + token };
-						let candidate =
-							'a=ice-ufrag:' + iceUfrag + '\r\n' +
-							'a=ice-pwd:' + icePwd + '\r\n' +
-							'm=audio 9 RTP/AVP 0\r\n';
-						for(let c of candidates)
-							candidate += 'a=' + c + '\r\n';
-						candidates = [];
-						$.ajax({
-							url: backend + resource,
-							type: 'PATCH',
-							headers: headers,
-							contentType: 'application/trickle-ice-sdpfrag',
-							data: candidate
-						}).error(function(xhr, textStatus, errorThrown) {
-							bootbox.alert(xhr.status + ": " + xhr.responseText);
-						}).done(function(response) {
-							console.log('Candidate sent');
-						});
-					}
-					return;
-				}
-				// If we got here, we're in the "WHEP server sends offer" mode,
-				// so we have to prepare an answer to send back via a PATCH
-				pc.createAnswer({})
-					.then(function(answer) {
-						console.log('Prepared answer:', answer.sdp);
-						// Extract ICE ufrag and pwd (for trickle)
-						iceUfrag = answer.sdp.match(/a=ice-ufrag:(.*)\r\n/)[1];
-						icePwd = answer.sdp.match(/a=ice-pwd:(.*)\r\n/)[1];
-						pc.setLocalDescription(answer)
-							.then(function() {
-								console.log('Sending answer to WHEP server');
-								// Send the answer to the resource address
-								$.ajax({
-									url: backend + resource,
-									type: 'PATCH',
-									headers: headers,
-									contentType: 'application/sdp',
-									data: answer.sdp
-								}).error(function(xhr, textStatus, errorThrown) {
-									bootbox.alert(xhr.status + ": " + xhr.responseText);
-								}).done(function(response) {
-									console.log('Negotiation completed');
-								});
-							}, function(err) {
-								bootbox.alert(err.message);
-							});
-					}, function(err) {
-						bootbox.alert(err.message);
-					});
-			}, function(err) {
-				bootbox.alert(err.message);
-			});
+		handleWhepResponse(request, sdp, false)
 	});
+}
+
+// Helper to process the response, whether it's for client- or server-sent offers
+function handleWhepResponse(request, sdp, offer) {
+	console.log('Got SDP ' + (offer ? 'offer' : 'answer') + ':', sdp);
+	resource = request.getResponseHeader('Location');
+	console.log('WHEP resource:', resource);
+	// TODO Parse ICE servers
+	// let ice = request.getResponseHeader('Link');
+	let iceServers = [{urls: "stun:stun.l.google.com:19302"}];
+	// Create PeerConnection, if needed
+	createPeerConnectionIfNeeded(iceServers);
+	// Pass the SDP to the PeerConnection
+	let jsep = {
+		type: offer ? 'offer' : 'answer',
+		sdp: sdp
+	};
+	pc.setRemoteDescription(jsep)
+		.then(function() {
+			console.log('Remote description accepted');
+			if(!offer) {
+				// We're done: just check if we have candidates to send
+				if(candidates.length > 0) {
+					// FIXME Trickle candidate
+					let headers = null;
+					if(token)
+						headers = { Authorization: 'Bearer ' + token };
+					let candidate =
+						'a=ice-ufrag:' + iceUfrag + '\r\n' +
+						'a=ice-pwd:' + icePwd + '\r\n' +
+						'm=audio 9 RTP/AVP 0\r\n';
+					for(let c of candidates)
+						candidate += 'a=' + c + '\r\n';
+					candidates = [];
+					$.ajax({
+						url: backend + resource,
+						type: 'PATCH',
+						headers: headers,
+						contentType: 'application/trickle-ice-sdpfrag',
+						data: candidate
+					}).error(function(xhr, textStatus, errorThrown) {
+						bootbox.alert(xhr.status + ": " + xhr.responseText);
+					}).done(function(response) {
+						console.log('Candidate sent');
+					});
+				}
+				return;
+			}
+			// If we got here, we're in the "WHEP server sends offer" mode,
+			// so we have to prepare an answer to send back via a PATCH
+			$('#whepsso').removeClass('hide');
+			pc.createAnswer({})
+				.then(function(answer) {
+					console.log('Prepared answer:', answer.sdp);
+					// Extract ICE ufrag and pwd (for trickle)
+					let headers = null;
+					if(token)
+						headers = { Authorization: 'Bearer ' + token };
+					iceUfrag = answer.sdp.match(/a=ice-ufrag:(.*)\r\n/)[1];
+					icePwd = answer.sdp.match(/a=ice-pwd:(.*)\r\n/)[1];
+					pc.setLocalDescription(answer)
+						.then(function() {
+							console.log('Sending answer to WHEP server');
+							// Send the answer to the resource address
+							$.ajax({
+								url: backend + resource,
+								type: 'PATCH',
+								headers: headers,
+								contentType: 'application/sdp',
+								data: answer.sdp
+							}).error(function(xhr, textStatus, errorThrown) {
+								bootbox.alert(xhr.status + ": " + xhr.responseText);
+							}).done(function(response) {
+								console.log('Negotiation completed');
+							});
+						}, function(err) {
+							bootbox.alert(err.message);
+						});
+				}, function(err) {
+					bootbox.alert(err.message);
+				});
+		}, function(err) {
+			bootbox.alert(err.message);
+		});
 }
 
 // Helper function to attach a media stream to a video element
@@ -222,7 +238,6 @@ function createPeerConnectionIfNeeded(iceServers) {
 		console.log('Handling Remote Track', event);
 		if(!event.streams)
 			return;
-		console.warn(event.streams[0].getTracks());
 		if($('#whepvideo').length === 0) {
 			$('#video').removeClass('hide').show();
 			$('#videoremote').append('<video class="rounded centered" id="whepvideo" width="100%" height="100%" autoplay playsinline/>');
