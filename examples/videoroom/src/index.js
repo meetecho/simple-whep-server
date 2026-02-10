@@ -43,7 +43,7 @@ import { JanusWhepServer } from '../../../src/whep.js';
 
 	// Create a test endpoint using a static token, and pointing to the
 	// VideoRoom publisher with ID 1 in room 1234 (assuming they exist)
-	let endpoint = server.createEndpoint({ id: 'abc123', plugin: 'videoroom', room: 1234, feed: 1026326423152807, token: 'verysecret' });
+	let endpoint = server.createEndpoint({ id: 'abc123', plugin: 'videoroom', room: 1234, feed: 1, token: 'verysecret' });
 	endpoint.on('new-subscriber', function() {
 		console.log(this.id + ': Endpoint has a new subscriber');
 	});
