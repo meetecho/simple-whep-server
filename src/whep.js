@@ -4,7 +4,7 @@
  * Simple WHEP server
  *
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
- * License: GPLv3
+ * License: ISC
  *
  * WHEP API and endpoint management
  *
